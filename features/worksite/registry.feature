@@ -3,15 +3,17 @@ Feature: Worksites — registry
   valid and merge: root :worksites in isaac.edn AND entity files under
   config/worksites/<name>.edn (:merge-root-entity? convention, like
   providers). :members is a required vector of absolute paths — a
-  singleton is a 1-member pool. Registration alone activates the
-  dispatch gate for any turn whose cwd is a member (hail, CLI, comm,
-  cron alike); unregistered directories are untouched.
+  singleton is a 1-member pool.
+
+  Protection is opt-in via the submitted :worksite turnstile (never
+  ambient). Registration alone does not gate CLI or other null-turnstile
+  turns. Unregistered directories are untouched.
 
   Background:
     Given an Isaac root at "isaac-state"
 
   @wip
-    Scenario: worksites validate from both config forms; memberless is rejected
+  Scenario: worksites validate from both config forms; memberless is rejected
     Given config file "isaac.edn" containing:
       """
       {:worksites {"chart-room" {:members ["/ships/cordelia/chart-room"]}}}
@@ -31,7 +33,7 @@ Feature: Worksites — registry
     And the exit code is 1
 
   @wip
-    Scenario: worksites list shows merged registry with lock state
+  Scenario: worksites list shows merged registry with lock state
     Given config file "isaac.edn" containing:
       """
       {:worksites {"chart-room" {:members ["/ships/cordelia/chart-room"]}}}
@@ -55,7 +57,7 @@ Feature: Worksites — registry
     And the exit code is 0
 
   @wip
-    Scenario: turns outside any worksite never consult the gate
+  Scenario: turns outside any worksite sail through even when another worksite is locked
     Given default Grover setup
     And config file "isaac.edn" containing:
       """
