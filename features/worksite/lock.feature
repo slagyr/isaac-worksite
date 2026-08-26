@@ -16,7 +16,6 @@ Feature: Worksites — locks
   Background:
     Given an Isaac root at "isaac-state"
 
-  @wip
   Scenario: operators can lock and unlock a worksite
     Given config file "isaac.edn" containing:
       """
@@ -43,7 +42,6 @@ Feature: Worksites — locks
     Then the stderr contains "not locked"
     And the exit code is 1
 
-  @wip
   Scenario: locked member refuses --turnstile worksite; bare prompt still runs
     Given default Grover setup
     And config file "isaac.edn" containing:
@@ -74,7 +72,6 @@ Feature: Worksites — locks
     Then the stdout contains "Under way"
     And the exit code is 0
 
-  @wip
   Scenario: turn lock taken by --turnstile worksite releases at turn end
     Given default Grover setup
     And config file "isaac.edn" containing:
@@ -99,7 +96,6 @@ Feature: Worksites — locks
     Then the stdout contains "Anchor is down"
     And the exit code is 0
 
-  @wip
   Scenario: a turn that fails still releases the worksite
     Given default Grover setup
     And config file "isaac.edn" containing:
@@ -125,7 +121,6 @@ Feature: Worksites — locks
     Then the stdout contains "Calm again"
     And the exit code is 0
 
-  @wip
   Scenario: dead-pid turn lock is stolen with --turnstile worksite; operator locks are not
     Given default Grover setup
     And config file "isaac.edn" containing:

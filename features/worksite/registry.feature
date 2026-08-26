@@ -12,7 +12,6 @@ Feature: Worksites — registry
   Background:
     Given an Isaac root at "isaac-state"
 
-  @wip
   Scenario: worksites validate from both config forms; memberless is rejected
     Given config file "isaac.edn" containing:
       """
@@ -32,7 +31,6 @@ Feature: Worksites — registry
     And the stderr contains "members"
     And the exit code is 1
 
-  @wip
   Scenario: worksites list shows merged registry with lock state
     Given config file "isaac.edn" containing:
       """
@@ -56,7 +54,6 @@ Feature: Worksites — registry
       | galley\s+free\s+/ships/cordelia/galley         |
     And the exit code is 0
 
-  @wip
   Scenario: turns outside any worksite sail through even when another worksite is locked
     Given default Grover setup
     And config file "isaac.edn" containing:

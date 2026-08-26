@@ -3,13 +3,17 @@
  :builtin? true
  :factory  isaac.module.protocol/module
 
- ;; Config: worksites are named directory resources. Both forms are valid
- ;; (root :worksites in isaac.edn AND config/worksites/<name>.edn entity
- ;; files — :merge-root-entity? true, same convention as providers).
- ;; A worksite is a pool from day one: a singleton is a 1-member pool.
+ :isaac.agent/turnstiles
+ {:worksite {:factory isaac.worksite.turnstile/worksite}}
+
+ :isaac/cli
+ {:worksites {:usage     "worksites [subcommand] [options]"
+              :summary   "List, lock, and unlock named worksites"
+              :namespace isaac.worksite.cli}}
+
  :isaac.config/schema
- {:worksites {:entity-dir          "worksites"
-              :merge-root-entity?  true
+ {:worksites {:entity-dir         "worksites"
+              :merge-root-entity? true
               :schema
               {:name        "worksite table"
                :type        :map
@@ -18,8 +22,9 @@
                :value-spec
                {:name        :worksite
                 :type        :map
-                :description "A named pool of working directories"
                 :schema      {:members {:type        :seq
                                         :description "Absolute directory paths (pool members; one = singleton)"
-                                        :value-spec  {:type :string}
-                                        :validations [:present?]}}}}}}}
+                                        :spec        {:type :string}}}}}}}
+
+ :isaac.config/check
+ {:worksite-members {:fn isaac.worksite.checks/check-worksite-members}}}
