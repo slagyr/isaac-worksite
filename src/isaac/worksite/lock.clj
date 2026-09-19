@@ -3,6 +3,7 @@
    Files live under <root>/worksites/<name>.lock as EDN maps."
   (:require
     [clojure.edn :as edn]
+    [isaac.cli.host :as host]
     [isaac.fs :as fs]
     [isaac.logger :as log]))
 
@@ -25,8 +26,26 @@
         (catch Exception _
           false)))))
 
+(defonce ^:private live-owners* (atom #{}))
+
 (defn current-pid []
   (.pid (java.lang.ProcessHandle/current)))
+
+(defn current-owner []
+  (str (current-pid) ":" (System/identityHashCode host/*host*)))
+
+(defn- stamp []
+  (let [owner (current-owner)]
+    (swap! live-owners* conj owner)
+    {:pid (current-pid) :owner owner}))
+
+(defn- owner-alive? [record]
+  (or (contains? @live-owners* (:owner record))
+      (and (some? (:owner record))
+           (not= (current-pid) (:pid record))
+           (process-alive? (:pid record)))
+      (and (nil? (:owner record))
+           (process-alive? (:pid record)))))
 
 (defn read-lock [root name]
   (let [fs*  (filesystem)
@@ -62,7 +81,7 @@
 
 (defn stale-turn-lock? [record]
   (and (turn-lock? record)
-       (not (process-alive? (:pid record)))))
+       (not (owner-alive? record))))
 
 (defn lock-state [record]
   (cond
@@ -78,9 +97,10 @@
     (cond
       (nil? existing)
       (do
-        (write-lock! root name {:kind   :operator
-                                :holder "operator"
-                                :at     (str (java.time.Instant/now))})
+        (write-lock! root name (merge {:kind   :operator
+                                       :holder "operator"
+                                       :at     (str (java.time.Instant/now))}
+                                      (stamp)))
         {:ok true})
 
       :else
@@ -118,12 +138,12 @@
     (if existing
       {:error :already-locked :lock existing}
       (let [token (str (java.util.UUID/randomUUID))]
-        (write-lock! root name {:kind    :turn
-                                :holder  session-key
-                                :session session-key
-                                :pid     (current-pid)
-                                :token   token
-                                :at      (str (java.time.Instant/now))})
+        (write-lock! root name (merge {:kind    :turn
+                                       :holder  session-key
+                                       :session session-key
+                                       :token   token
+                                       :at      (str (java.time.Instant/now))}
+                                      (stamp)))
         {:ok true :token token}))))
 
 (defn release-turn!

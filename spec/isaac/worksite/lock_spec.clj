@@ -1,9 +1,10 @@
 (ns isaac.worksite.lock-spec
   (:require
+    [isaac.cli.host :as host]
     [isaac.fs :as fs]
     [isaac.nexus :as nexus]
     [isaac.worksite.lock :as sut]
-    [speclj.core :refer [describe it should should-be-nil should-not should=]]))
+    [speclj.core :refer [describe it should should-be-nil should-not should-not= should=]]))
 
 (describe "worksite lock"
 
@@ -40,4 +41,30 @@
         (sut/acquire-operator! "/isaac-state" "chart-room")
         (should-not (sut/steal-stale-turn! "/isaac-state" "chart-room"))
         (should= :operator (sut/lock-state (sut/read-lock "/isaac-state" "chart-room"))))))
-)
+
+  (it "stamps an owner id that is more than a bare pid"
+    (let [mem (fs/mem-fs)]
+      (nexus/-with-nexus {:fs mem :root "/isaac-state"}
+        (should (:ok (sut/acquire-turn! "/isaac-state" "chart-room" {:session-key "helm-chat"})))
+        (let [record (sut/read-lock "/isaac-state" "chart-room")]
+          (should= (sut/current-pid) (:pid record))
+          (should-not (nil? (:owner record)))
+          (should-not= (str (:pid record)) (str (:owner record)))))))
+
+  (it "does not treat an embedded operator lock and a server turn lock in the same pid as the same owner"
+    (let [mem (fs/mem-fs)]
+      (nexus/-with-nexus {:fs mem :root "/isaac-state"}
+        (let [embedded (host/embedded-host {:in  (java.io.StringReader. "")
+                                            :out (java.io.StringWriter.)
+                                            :err (java.io.StringWriter.)
+                                            :env {}
+                                            :cwd "/test/isaac"})]
+          (binding [host/*host* embedded]
+            (should (:ok (sut/acquire-operator! "/isaac-state" "chart-room"))))
+          (let [operator (sut/read-lock "/isaac-state" "chart-room")]
+            (should (:ok (sut/release-operator! "/isaac-state" "chart-room")))
+            (should (:ok (sut/acquire-turn! "/isaac-state" "chart-room" {:session-key "helm-chat"})))
+            (let [turn (sut/read-lock "/isaac-state" "chart-room")]
+              (should= (:pid operator) (:pid turn))
+              (should-not= (:owner operator) (:owner turn))))))))
+  )

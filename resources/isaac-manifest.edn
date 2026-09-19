@@ -1,5 +1,5 @@
 {:id       :isaac.worksite
- :version  "0.1.0"
+ :version  "0.1.1"
  :builtin? true
  :factory  isaac.module.protocol/module
 
@@ -9,7 +9,8 @@
  :isaac/cli
  {:worksites {:usage     "worksites [subcommand] [options]"
               :summary   "List, lock, and unlock named worksites"
-              :namespace isaac.worksite.cli}}
+              :namespace isaac.worksite.cli
+              :hosted    true}}
 
  :isaac.config/schema
  {:worksites {:entity-dir         "worksites"
