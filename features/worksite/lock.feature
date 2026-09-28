@@ -1,144 +1,143 @@
-Feature: Worksites — locks
-  The worksite member is the concurrency mutex for submitters that opt in
-  via `--turnstile worksite` (infer member from session cwd) or
-  `--turnstile worksite:<name>` (explicit). Locks are DURABLE (file-based —
-  CLI turns are separate processes): operator locks via the CLI; turn locks
-  are taken at admit through the :worksite turnstile and released by
-  guaranteed turn finalization (isaac-bbov) on every outcome.
-
-  CLI defaults to the null turnstile — the human at the keyboard keeps
-  working while `worksites lock` means robots out. A locked member
-  returns {:refuse :worksite-busy} to opted-in submitters (CLI: stderr +
-  exit 1; hail defers on the reason). Operator locks are NEVER auto-broken.
-  Turn locks from dead processes are broken on demand (pid liveness —
-  worksites are per-host).
+@wip
+Feature: Worksites — leases and locks
+  A turn that names a worksite pool (--pool, or :resource-pools) leases
+  one free member for the whole turn; the member's directory becomes the
+  turn's cwd. When every member is leased or locked, the turn waits in
+  the queue — busy means wait, never a refusal. Leases are DURABLE
+  (file-based — CLI turns are separate processes) and released on every
+  turn outcome. Operators lock and unlock a member by its path; an
+  operator lock is never broken, while a lease held by a dead process is
+  stolen on the next acquire. A CLI unlock is another process, so the
+  server's queue picks the waiting turn up on its next tick. (isaac-npmp)
 
   Background:
     Given an Isaac root at "isaac-state"
+    And default Grover setup
+    And config file "isaac.edn" containing:
+      """
+      {:resource-pools {"decks" {:type    :worksite
+                                 :members ["/ships/cordelia/chart-room" "/ships/cordelia/galley"]}}}
+      """
+    And the following sessions exist:
+      | name   |
+      | harbor |
+      | jetty  |
+      | quay   |
 
-  Scenario: operators can lock and unlock a worksite
-    Given config file "isaac.edn" containing:
-      """
-      {:worksites {"chart-room" {:members ["/ships/cordelia/chart-room"]}}}
-      """
-    When isaac is run with "worksites lock chart-room"
-    Then the stdout contains "locked chart-room"
+  Scenario: two members run two turns; a third waits and takes the first member released
+    Given the following model responses are queued:
+      | type | content | model | wait |
+      | text | First   | echo  | true |
+      | text | Second  | echo  | true |
+      | text | Third   | echo  |      |
+    When the user sends "berth one" on session "harbor" with resource pools "decks"
+    And the user sends "berth two" on session "jetty" with resource pools "decks"
+    And isaac is run with "prompt -m 'berth three' --session quay --pool decks"
+    Then the stdout contains "held"
     And the exit code is 0
-    When isaac is run with "worksites list"
-    Then the stdout matches:
-      | pattern                             |
-      | chart-room\s+locked \(operator\)\s+ |
-    When isaac is run with "worksites lock chart-room"
+    When the turn ends on session "jetty"
+    Then session "quay" has transcript matching:
+      | type    | message.role | message.content | cwd                    |
+      | message | user         | berth three     | /ships/cordelia/galley |
+      | message | assistant    | Third           |                        |
+    And session "harbor" has transcript matching:
+      | type    | message.role | message.content | cwd                        |
+      | message | user         | berth one       | /ships/cordelia/chart-room |
+    And session "jetty" has transcript matching:
+      | type    | message.role | message.content | cwd                    |
+      | message | user         | berth two       | /ships/cordelia/galley |
+
+  Scenario: one session's turns run in whichever member is free
+    Given the following model responses are queued:
+      | type | content        | model | wait |
+      | text | Hold fast      | echo  | true |
+      | text | Galley first   | echo  |      |
+      | text | Chart room now | echo  |      |
+    When the user sends "keep watch" on session "jetty" with resource pools "decks"
+    And isaac is run with "prompt -m 'first leg' --session harbor --pool decks"
+    Then the stdout contains "Galley first"
+    When the turn ends on session "jetty"
+    And isaac is run with "prompt -m 'second leg' --session harbor --pool decks"
+    Then the stdout contains "Chart room now"
+    And session "harbor" has transcript matching:
+      | type    | message.role | message.content | cwd                        |
+      | message | user         | first leg       | /ships/cordelia/galley     |
+      | message | user         | second leg      | /ships/cordelia/chart-room |
+
+  Scenario: an operator lock keeps its member out; with every member locked the turn waits
+    Given the following model responses are queued:
+      | type | content            | model |
+      | text | Galley it is       | echo  |
+      | text | Chart room at last | echo  |
+    When isaac is run with "worksites lock /ships/cordelia/chart-room"
+    And isaac is run with "prompt -m 'Stow the lines' --session harbor --pool decks"
+    Then the stdout contains "Galley it is"
+    And session "harbor" has transcript matching:
+      | type    | message.role | message.content | cwd                    |
+      | message | user         | Stow the lines  | /ships/cordelia/galley |
+    When isaac is run with "worksites lock /ships/cordelia/galley"
+    And isaac is run with "prompt -m 'Plot the course' --session jetty --pool decks"
+    Then the stdout contains "held"
+    And the exit code is 0
+    When isaac is run with "worksites unlock /ships/cordelia/chart-room"
+    And the turn queue ticks at "2026-03-01T18:00:00"
+    Then session "jetty" has transcript matching:
+      | type    | message.role | message.content    | cwd                        |
+      | message | user         | Plot the course    | /ships/cordelia/chart-room |
+      | message | assistant    | Chart room at last |                            |
+
+  Scenario: operators lock and unlock a member by its path
+    When isaac is run with "worksites lock /ships/cordelia/chart-room"
+    Then the stdout contains "locked /ships/cordelia/chart-room"
+    And the exit code is 0
+    When isaac is run with "worksites lock /ships/cordelia/chart-room"
     Then the stderr contains "already locked"
     And the exit code is 1
-    When isaac is run with "worksites unlock chart-room"
-    Then the stdout contains "unlocked chart-room"
+    When isaac is run with "worksites unlock /ships/cordelia/chart-room"
+    Then the stdout contains "unlocked /ships/cordelia/chart-room"
     And the exit code is 0
-    When isaac is run with "worksites list"
-    Then the stdout matches:
-      | pattern           |
-      | chart-room\s+free |
-    When isaac is run with "worksites unlock chart-room"
+    When isaac is run with "worksites unlock /ships/cordelia/chart-room"
     Then the stderr contains "not locked"
     And the exit code is 1
-
-  Scenario: locked member refuses --turnstile worksite; bare prompt still runs
-    Given default Grover setup
-    And config file "isaac.edn" containing:
-      """
-      {:worksites {"chart-room" {:members ["/ships/cordelia/chart-room"]}}}
-      """
-    And the following sessions exist:
-      | name      | cwd                        |
-      | helm-chat | /ships/cordelia/chart-room |
-    When isaac is run with "worksites lock chart-room"
-    Then the exit code is 0
-    Given the following model responses are queued:
-      | type | content       | model |
-      | text | Course is set | echo  |
-    When isaac is run with "prompt -m 'Plot the course' --session helm-chat --turnstile worksite"
-    Then the stderr contains "chart-room"
-    And the stderr contains "locked"
+    When isaac is run with "worksites lock /ships/cordelia/bilge"
+    Then the stderr contains "/ships/cordelia/bilge"
+    And the stderr contains "not a worksite member"
     And the exit code is 1
-    When isaac is run with "prompt -m 'Plot the course' --session helm-chat"
-    Then the stdout contains "Course is set"
-    And the exit code is 0
-    When isaac is run with "worksites unlock chart-room"
-    Then the exit code is 0
-    Given the following model responses are queued:
-      | type | content     | model |
-      | text | Under way   | echo  |
-    When isaac is run with "prompt -m 'Plot the course' --session helm-chat --turnstile worksite"
-    Then the stdout contains "Under way"
-    And the exit code is 0
 
-  Scenario: turn lock taken by --turnstile worksite releases at turn end
-    Given default Grover setup
-    And config file "isaac.edn" containing:
+  Scenario: a turn that fails still releases its member
+    Given config file "isaac.edn" containing:
       """
-      {:worksites {"chart-room" {:members ["/ships/cordelia/chart-room"]}}}
+      {:resource-pools {"decks" {:type :worksite :members ["/ships/cordelia/chart-room"]}}}
       """
-    And the following sessions exist:
-      | name      | cwd                        |
-      | helm-chat | /ships/cordelia/chart-room |
     And the following model responses are queued:
-      | type | content        | model |
-      | text | Course is set  | echo  |
-      | text | Anchor is down | echo  |
-    When isaac is run with "prompt -m 'Plot the course' --session helm-chat --turnstile worksite"
-    Then the stdout contains "Course is set"
-    And the exit code is 0
-    When isaac is run with "worksites list"
-    Then the stdout matches:
-      | pattern           |
-      | chart-room\s+free |
-    When isaac is run with "prompt -m 'Drop anchor' --session helm-chat --turnstile worksite"
-    Then the stdout contains "Anchor is down"
-    And the exit code is 0
-
-  Scenario: a turn that fails still releases the worksite
-    Given default Grover setup
-    And config file "isaac.edn" containing:
-      """
-      {:worksites {"chart-room" {:members ["/ships/cordelia/chart-room"]}}}
-      """
-    And the following sessions exist:
-      | name      | cwd                        |
-      | helm-chat | /ships/cordelia/chart-room |
-    And the following model responses are queued:
-      | type       | status | message      | model |
-      | http-error | 403    | token buried | echo  |
-    When isaac is run with "prompt -m 'Plot the course' --session helm-chat --turnstile worksite"
+      | type       | status | message          | model |
+      | http-error | 400    | lamp oil spilled | echo  |
+    When isaac is run with "prompt -m 'Plot the course' --session harbor --pool decks"
     Then the exit code is 1
     When isaac is run with "worksites list"
     Then the stdout matches:
-      | pattern           |
-      | chart-room\s+free |
+      | pattern                                   |
+      | decks\s+/ships/cordelia/chart-room\s+free |
     Given the following model responses are queued:
       | type | content    | model |
       | text | Calm again | echo  |
-    When isaac is run with "prompt -m 'Try again' --session helm-chat --turnstile worksite"
+    When isaac is run with "prompt -m 'Try again' --session harbor --pool decks"
     Then the stdout contains "Calm again"
     And the exit code is 0
 
-  Scenario: dead-pid turn lock is stolen with --turnstile worksite; operator locks are not
-    Given default Grover setup
-    And config file "isaac.edn" containing:
+  Scenario: a dead process's lease is stolen; an operator lock is not
+    Given config file "isaac.edn" containing:
       """
-      {:worksites {"chart-room" {:members ["/ships/cordelia/chart-room"]}}}
+      {:resource-pools {"decks" {:type :worksite :members ["/ships/cordelia/chart-room"]}}}
       """
-    And the following sessions exist:
-      | name      | cwd                        |
-      | helm-chat | /ships/cordelia/chart-room |
-    And a stale turn lock holds worksite "chart-room" with pid 999999
+    And a stale turn lock holds worksite "/ships/cordelia/chart-room" with pid 999999
     And the following model responses are queued:
       | type | content       | model |
       | text | Course is set | echo  |
-    When isaac is run with "prompt -m 'Plot the course' --session helm-chat --turnstile worksite"
+    When isaac is run with "prompt -m 'Plot the course' --session harbor --pool decks"
     Then the stdout contains "Course is set"
     And the exit code is 0
-    When isaac is run with "worksites lock chart-room"
-    Then the exit code is 0
-    When isaac is run with "prompt -m 'Once more' --session helm-chat --turnstile worksite"
-    Then the stderr contains "locked"
-    And the exit code is 1
+    When isaac is run with "worksites lock /ships/cordelia/chart-room"
+    And isaac is run with "prompt -m 'Once more' --session harbor --pool decks"
+    Then the stdout contains "held"
+    And the exit code is 0
