@@ -1,4 +1,3 @@
-@wip
 Feature: Worksites — leases and locks
   A turn that names a worksite pool (--pool, or :resource-pools) leases
   one free member for the whole turn; the member's directory becomes the

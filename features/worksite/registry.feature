@@ -1,4 +1,3 @@
-@wip
 Feature: Worksites — registry
   A worksite is a resource pool of working directories: a :resource-pools
   instance with :type :worksite and :members, a required vector of

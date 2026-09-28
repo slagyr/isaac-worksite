@@ -13,9 +13,9 @@
   ([cfg]
    (into {}
          (keep (fn [[k v]]
-                 (when (and (map? v) (seq (:members v)))
-                   [(name k) {:members (mapv str (:members v))}])))
-         (or (:worksites cfg) {}))))
+                 (when (and (= :worksite (:type v)) (seq (:members v)))
+                   [(name k) {:type :worksite :members (mapv str (:members v))}])))
+         (or (:resource-pools cfg) {}))))
 
 (defn names
   ([] (names (snapshot)))

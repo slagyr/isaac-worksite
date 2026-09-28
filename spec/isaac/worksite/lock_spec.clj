@@ -35,6 +35,14 @@
           (sut/release-turn! "/isaac-state" "chart-room" (:token first*))
           (should-be-nil (sut/read-lock "/isaac-state" "chart-room"))))))
 
+  (it "never grants the same member to two simultaneous claimants"
+    (let [mem (fs/mem-fs)
+          go  (promise)]
+      (nexus/-with-nexus {:fs mem :root "/isaac-state"}
+        (let [attempts (doall (repeatedly 2 #(future @go (sut/acquire-turn! "/isaac-state" "/ships/cordelia/galley" {:session-key "harbor"}))))]
+          (deliver go true)
+          (should= 1 (count (filter :ok (map deref attempts))))))))
+
   (it "does not treat an operator lock as stealable"
     (let [mem (fs/mem-fs)]
       (nexus/-with-nexus {:fs mem :root "/isaac-state"}

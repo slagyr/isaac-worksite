@@ -27,23 +27,17 @@
   (case (lock/lock-state record)
     :free     "free"
     :operator "locked (operator)"
-    :turn     "locked (turn)"
+    :turn     (str "leased (" (:session record) ")")
     "locked"))
 
 (defn- list-rows [root cfg]
-  (mapv (fn [name]
-          (let [site   (registry/lookup cfg name)
-                record (lock/read-lock root name)]
-            {:name    name
-             :state   (state-label record)
-             :members (str/join " " (or (:members site) []))}))
-        (registry/names cfg)))
+  (for [name (registry/names cfg)
+        member (:members (registry/lookup cfg name))]
+    {:name name :member member :state (state-label (lock/read-lock root member))}))
 
 (defn- format-list [rows]
-  (str/join "\n"
-            (map (fn [{:keys [name state members]}]
-                   (str name " " state " " members))
-                 rows)))
+  (str/join "\n" (map (fn [{:keys [name member state]}]
+                         (str name " " member " " state)) rows)))
 
 (defn- run-list [opts]
   (let [root (derive-root opts)
@@ -54,17 +48,17 @@
     0))
 
 (defn- known-name? [cfg name]
-  (boolean (registry/lookup cfg name)))
+  (boolean (some (fn [[_ {:keys [members]}]] (some #{name} members)) (registry/all cfg))))
 
 (defn- run-lock [opts name]
   (let [root (derive-root opts)
         cfg  (load-cfg root)]
     (cond
       (str/blank? name)
-      (do (binding [*out* *err*] (println "Usage: isaac worksites lock <name>")) 1)
+      (do (binding [*out* *err*] (println "Usage: isaac worksites lock <member-path>")) 1)
 
       (not (known-name? cfg name))
-      (do (binding [*out* *err*] (println (str "unknown worksite: " name))) 1)
+      (do (binding [*out* *err*] (println (str "not a worksite member: " name))) 1)
 
       :else
       (let [result (lock/acquire-operator! root name)]
@@ -77,10 +71,10 @@
         cfg  (load-cfg root)]
     (cond
       (str/blank? name)
-      (do (binding [*out* *err*] (println "Usage: isaac worksites unlock <name>")) 1)
+      (do (binding [*out* *err*] (println "Usage: isaac worksites unlock <member-path>")) 1)
 
       (not (known-name? cfg name))
-      (do (binding [*out* *err*] (println (str "unknown worksite: " name))) 1)
+      (do (binding [*out* *err*] (println (str "not a worksite member: " name))) 1)
 
       :else
       (let [result (lock/release-operator! root name)]
@@ -117,6 +111,6 @@
   (run-fn opts))
 
 (defmethod cli-api/subcommands :worksites [_id]
-  [{:name "list"   :summary "List worksites and their lock state"}
+  [{:name "list"   :summary "List worksite members and their state"}
    {:name "lock"   :summary "Take an operator lock on a worksite"}
    {:name "unlock" :summary "Release an operator lock on a worksite"}])

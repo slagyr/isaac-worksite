@@ -17,27 +17,39 @@
       (nexus/-with-nexus {:fs mem :root "/isaac-state"}
         (fs/mkdirs mem "/isaac-state/config")
         (fs/spit mem "/isaac-state/config/isaac.edn"
-                 "{:worksites {\"chart-room\" {:members [\"/ships/cordelia/chart-room\"]}}}")
+                 "{:resource-pools {\"decks\" {:type :worksite :members [\"/ships/cordelia/chart-room\"]}}}")
         (let [exit* (atom nil)
               out   (with-out-str
                       (reset! exit* (sut/run-fn {:root "/isaac-state"
                                                  :_raw-args ["list"]})))]
           (should= 0 @exit*)
-          (should-contain "chart-room free /ships/cordelia/chart-room" out)))))
+          (should-contain "decks /ships/cordelia/chart-room free" out)))))
 
   (it "locks a root-config worksite by name"
     (let [mem (fs/mem-fs)]
       (nexus/-with-nexus {:fs mem :root "/isaac-state"}
         (fs/mkdirs mem "/isaac-state/config")
         (fs/spit mem "/isaac-state/config/isaac.edn"
-                 "{:worksites {\"chart-room\" {:members [\"/ships/cordelia/chart-room\"]}}}")
+                 "{:resource-pools {\"decks\" {:type :worksite :members [\"/ships/cordelia/chart-room\"]}}}")
         (let [exit* (atom nil)
               out   (with-out-str
                       (reset! exit* (sut/run-fn {:root "/isaac-state"
-                                                 :_raw-args ["lock" "chart-room"]})))]
+                                                 :_raw-args ["lock" "/ships/cordelia/chart-room"]})))]
           (should= 0 @exit*)
-          (should-contain "locked chart-room" out)
-          (should= :operator (lock/lock-state (lock/read-lock "/isaac-state" "chart-room")))))))
+          (should-contain "locked /ships/cordelia/chart-room" out)
+          (should= :operator (lock/lock-state (lock/read-lock "/isaac-state" "/ships/cordelia/chart-room")))))))
+
+  (it "shows a leased chart-room and operator-locked galley independently"
+    (let [mem (fs/mem-fs)]
+      (nexus/-with-nexus {:fs mem :root "/isaac-state"}
+        (fs/mkdirs mem "/isaac-state/config")
+        (fs/spit mem "/isaac-state/config/isaac.edn"
+                 "{:resource-pools {\"decks\" {:type :worksite :members [\"/ships/cordelia/chart-room\" \"/ships/cordelia/galley\"]}}}")
+        (lock/acquire-turn! "/isaac-state" "/ships/cordelia/chart-room" {:session-key "harbor"})
+        (lock/acquire-operator! "/isaac-state" "/ships/cordelia/galley")
+        (let [out (with-out-str (sut/run-fn {:root "/isaac-state" :_raw-args ["list"]}))]
+          (should-contain "decks /ships/cordelia/chart-room leased (harbor)" out)
+          (should-contain "decks /ships/cordelia/galley locked (operator)" out)))))
 
   (it "declares the worksites command hosted"
     (let [manifest (edn/read-string (slurp "resources/isaac-manifest.edn"))]

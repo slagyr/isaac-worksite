@@ -1,11 +1,13 @@
 (ns isaac.worksite.lock
   "Durable operator/turn locks for named worksites.
-   Files live under <root>/worksites/<name>.lock as EDN maps."
+   Files live under <root>/worksites/<encoded-member>.lock as EDN maps."
   (:require
     [clojure.edn :as edn]
     [isaac.cli.host :as host]
     [isaac.fs :as fs]
-    [isaac.logger :as log]))
+    [isaac.logger :as log])
+  (:import (java.nio.channels FileChannel)
+           (java.nio.file OpenOption StandardOpenOption)))
 
 (defn- filesystem []
   (or (fs/instance)
@@ -15,7 +17,7 @@
   (str root "/worksites"))
 
 (defn lock-path [root name]
-  (str (lock-dir root) "/" name ".lock"))
+  (str (lock-dir root) "/" (java.net.URLEncoder/encode (str name) "UTF-8") ".lock"))
 
 (defn- process-alive? [pid]
   (boolean
@@ -90,67 +92,69 @@
     (turn-lock? record) :turn
     :else :locked))
 
+(defonce ^:private guards* (atom {}))
+
+(defn- guard [path]
+  (or (get @guards* path)
+      (get (swap! guards* #(if (contains? % path) % (assoc % path (java.util.concurrent.locks.ReentrantLock.)))) path)))
+
+(defn- with-guard [root name busy f]
+  (let [path (lock-path root name)
+        mutex (guard path)]
+    (if-not (.tryLock mutex)
+      busy
+      (try
+        (if (instance? isaac.fs.RealFs (filesystem))
+          (let [file (java.io.File. (str path ".guard"))]
+            (.mkdirs (.getParentFile file))
+            (with-open [channel (FileChannel/open (.toPath file)
+                           (into-array OpenOption [StandardOpenOption/CREATE StandardOpenOption/WRITE]))]
+              (try
+                (if-let [lock (try (.tryLock channel) (catch Exception _ nil))]
+                  (try (f) (finally (.release lock)))
+                  busy)
+                (catch Exception _ busy))))
+          (f))
+        (finally (.unlock mutex))))))
+
 (defn acquire-operator!
-  "Take an operator lock. Returns {:ok true} or {:error :already-locked}."
+  "Atomically claim one member for an operator."
   [root name]
-  (let [existing (read-lock root name)]
-    (cond
-      (nil? existing)
-      (do
-        (write-lock! root name (merge {:kind   :operator
-                                       :holder "operator"
-                                       :at     (str (java.time.Instant/now))}
-                                      (stamp)))
-        {:ok true})
+  (with-guard root name {:error :already-locked}
+    #(if-let [existing (read-lock root name)]
+       {:error :already-locked :lock existing}
+       (do (write-lock! root name (merge {:kind :operator :holder "operator"
+                                           :at (str (java.time.Instant/now))} (stamp)))
+           {:ok true}))))
 
-      :else
-      {:error :already-locked :lock existing})))
+(defn release-operator! [root name]
+  (with-guard root name {:error :not-locked}
+    #(if (operator-lock? (read-lock root name))
+       (do (delete-lock! root name) {:ok true})
+       {:error :not-locked})))
 
-(defn release-operator!
-  "Drop an operator lock. Returns {:ok true} or {:error :not-locked}."
-  [root name]
-  (let [existing (read-lock root name)]
-    (if (nil? existing)
-      {:error :not-locked}
-      (do
-        (delete-lock! root name)
-        {:ok true}))))
+(defn steal-stale-turn! [root name]
+  (with-guard root name false
+    #(let [existing (read-lock root name)]
+       (when (stale-turn-lock? existing)
+         (log/info :worksite/stale-lock-stolen :worksite name :pid (:pid existing) :session (:session existing))
+         (delete-lock! root name)
+         true))))
 
-(defn steal-stale-turn!
-  "If the current lock is a dead-pid turn lock, delete it and log loudly.
-   Returns true when a steal happened."
-  [root name]
-  (let [existing (read-lock root name)]
-    (when (stale-turn-lock? existing)
-      (log/info :worksite/stale-lock-stolen
-                :worksite name
-                :pid (:pid existing)
-                :session (:session existing))
-      (delete-lock! root name)
-      true)))
+(defn acquire-turn! [root name {:keys [session-key]}]
+  (with-guard root name {:error :already-locked}
+    #(let [existing (read-lock root name)]
+       (if (and existing (not (stale-turn-lock? existing)))
+         {:error :already-locked :lock existing}
+         (let [token (str (java.util.UUID/randomUUID))]
+           (when existing
+             (log/info :worksite/stale-lock-stolen :worksite name :pid (:pid existing) :session (:session existing)))
+           (write-lock! root name (merge {:kind :turn :holder session-key :session session-key
+                                          :token token :at (str (java.time.Instant/now))} (stamp)))
+           {:ok true :token token})))))
 
-(defn acquire-turn!
-  "Take a turn lock for session-key. Steals a stale turn lock first.
-   Returns {:ok true :token ...} or {:error :already-locked :lock ...}."
-  [root name {:keys [session-key]}]
-  (steal-stale-turn! root name)
-  (let [existing (read-lock root name)]
-    (if existing
-      {:error :already-locked :lock existing}
-      (let [token (str (java.util.UUID/randomUUID))]
-        (write-lock! root name (merge {:kind    :turn
-                                       :holder  session-key
-                                       :session session-key
-                                       :token   token
-                                       :at      (str (java.time.Instant/now))}
-                                      (stamp)))
-        {:ok true :token token}))))
-
-(defn release-turn!
-  "Drop a turn lock. No-op if the file is gone or is an operator lock."
-  [root name token]
-  (let [existing (read-lock root name)]
-    (when (and (turn-lock? existing)
-               (or (nil? token) (= token (:token existing))))
-      (delete-lock! root name))
-    nil))
+(defn release-turn! [root name token]
+  (with-guard root name nil
+    #(let [existing (read-lock root name)]
+       (when (and (turn-lock? existing) (= token (:token existing)))
+         (delete-lock! root name)))))
