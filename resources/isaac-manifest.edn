@@ -1,6 +1,7 @@
 {:id       :isaac.worksite
  :version  "0.1.2"
  :builtin? true
+ :handbook "isaac/worksite/handbook.md"
  :factory  isaac.module.protocol/module
 
  :isaac.agent/resource-pool-types
