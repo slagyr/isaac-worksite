@@ -1,16 +1,16 @@
-(ns isaac.worksite-steps
+(ns isaac.worksite.worksite-steps
   (:require
     [clojure.edn :as edn]
     [gherclj.core :as g :refer [defgiven helper!]]
-    [isaac.config.config-steps :as config-steps]
-    [isaac.config.root :as root]
-    [isaac.fs :as fs]
-    [isaac.nexus :as nexus]
-    [isaac.resource-pool :as pool]
+    [isaac.foundation.config.config-steps :as config-steps]
+    [isaac.foundation.config.root :as root]
+    [isaac.foundation.fs :as fs]
+    [isaac.foundation.nexus :as nexus]
+    [isaac.agent.resource-pool :as pool]
     [isaac.worksite.pool :as worksite-pool]
     [isaac.worksite.lock :as lock]))
 
-(helper! isaac.worksite-steps)
+(helper! isaac.worksite.worksite-steps)
 
 (g/before-scenario (fn [] (pool/register! :worksite worksite-pool/worksite)))
 
@@ -51,4 +51,4 @@
     nil))
 
 (defgiven "a stale turn lock holds worksite {string} with pid {int}"
-  isaac.worksite-steps/stale-turn-lock-holds)
+  isaac.worksite.worksite-steps/stale-turn-lock-holds)

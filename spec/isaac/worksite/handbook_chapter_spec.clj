@@ -9,16 +9,16 @@
    Unlike isaac-imessage (isaac-6nfg), isaac-worksite's manifest already
    declares :builtin? true, so its own isaac-manifest.edn resource (on this
    module's own classpath: resources/isaac-manifest.edn, per deps.edn :paths)
-   is picked up by isaac.module.discovery/builtin-index's own classpath scan
+   is picked up by isaac.foundation.module.discovery/builtin-index's own classpath scan
    without any manual index merge."
   (:require
     [clojure.java.io :as io]
     [clojure.string :as str]
-    [isaac.config.schema-compose :as schema-compose]
-    [isaac.config.schema.resolve :as schema-resolve]
-    [isaac.fs :as fs]
-    [isaac.module.discovery :as discovery]
-    [isaac.nexus :as nexus]
+    [isaac.foundation.config.schema-compose :as schema-compose]
+    [isaac.foundation.config.schema.resolve :as schema-resolve]
+    [isaac.foundation.fs :as fs]
+    [isaac.foundation.module.discovery :as discovery]
+    [isaac.foundation.nexus :as nexus]
     [speclj.core :refer :all]))
 
 (def ^:private chapter-resource "isaac/worksite/handbook.md")
@@ -51,7 +51,7 @@
 (defn- known-cli-commands
   "Top-level command names contributed to the :isaac/cli berth by every
    module in `index` — read directly off each module's manifest rather than
-   through isaac.module.berths, following isaac.comm.imessage's
+   through isaac.foundation.module.berths, following isaac.comm.imessage's
    handbook-chapter-lint pattern."
   [index]
   (->> (vals index)

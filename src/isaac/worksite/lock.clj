@@ -3,9 +3,9 @@
    Files live under <root>/worksites/<encoded-member>.lock as EDN maps."
   (:require
     [clojure.edn :as edn]
-    [isaac.cli.host :as host]
-    [isaac.fs :as fs]
-    [isaac.logger :as log])
+    [isaac.foundation.cli.host :as host]
+    [isaac.foundation.fs :as fs]
+    [isaac.foundation.logger :as log])
   (:import (java.nio.channels FileChannel)
            (java.nio.file OpenOption StandardOpenOption)))
 
@@ -104,7 +104,7 @@
     (if-not (.tryLock mutex)
       busy
       (try
-        (if (instance? isaac.fs.RealFs (filesystem))
+        (if (instance? isaac.foundation.fs.RealFs (filesystem))
           (let [file (java.io.File. (str path ".guard"))]
             (.mkdirs (.getParentFile file))
             (with-open [channel (FileChannel/open (.toPath file)

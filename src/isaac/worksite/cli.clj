@@ -1,12 +1,12 @@
 (ns isaac.worksite.cli
   (:require
     [clojure.string :as str]
-    [isaac.cli.api :as cli-api]
-    [isaac.cli.registry :as cli]
-    [isaac.config.loader :as loader]
-    [isaac.config.root :as root]
-    [isaac.fs :as fs]
-    [isaac.nexus :as nexus]
+    [isaac.foundation.cli.api :as cli-api]
+    [isaac.foundation.cli.registry :as cli]
+    [isaac.foundation.config.loader :as loader]
+    [isaac.foundation.config.root :as root]
+    [isaac.foundation.fs :as fs]
+    [isaac.foundation.nexus :as nexus]
     [isaac.worksite.lock :as lock]
     [isaac.worksite.registry :as registry]))
 

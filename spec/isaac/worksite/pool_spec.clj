@@ -1,8 +1,8 @@
 (ns isaac.worksite.pool-spec
   (:require
-    [isaac.fs :as fs]
-    [isaac.nexus :as nexus]
-    [isaac.resource-pool :as pool]
+    [isaac.foundation.fs :as fs]
+    [isaac.foundation.nexus :as nexus]
+    [isaac.agent.resource-pool :as pool]
     [isaac.worksite.pool :as sut]
     [speclj.core :refer [describe it should=]]))
 

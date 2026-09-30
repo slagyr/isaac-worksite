@@ -2,7 +2,7 @@
  :version  "0.1.2"
  :builtin? true
  :handbook "isaac/worksite/handbook.md"
- :factory  isaac.module.protocol/module
+ :factory  isaac.foundation.module.protocol/module
 
  :isaac.agent/resource-pool-types
  {:worksite {:factory isaac.worksite.pool/worksite}}

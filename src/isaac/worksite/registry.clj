@@ -2,7 +2,7 @@
   "Worksite config lookup: named pools of member directories."
   (:require
     [clojure.string :as str]
-    [isaac.config.loader :as loader]))
+    [isaac.foundation.config.loader :as loader]))
 
 (defn- snapshot []
   (or (loader/snapshot "worksite registry") {}))

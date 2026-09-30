@@ -1,8 +1,8 @@
 (ns isaac.worksite.lock-spec
   (:require
-    [isaac.cli.host :as host]
-    [isaac.fs :as fs]
-    [isaac.nexus :as nexus]
+    [isaac.foundation.cli.host :as host]
+    [isaac.foundation.fs :as fs]
+    [isaac.foundation.nexus :as nexus]
     [isaac.worksite.lock :as sut]
     [speclj.core :refer [describe it should should-be-nil should-not should-not= should=]]))
 

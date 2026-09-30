@@ -1,10 +1,10 @@
 (ns isaac.worksite.pool
   "Named directory pool; a receipt reserves exactly one member."
   (:require
-    [isaac.config.loader :as loader]
-    [isaac.config.root :as root]
-    [isaac.nexus :as nexus]
-    [isaac.resource-pool :as pool]
+    [isaac.foundation.config.loader :as loader]
+    [isaac.foundation.config.root :as root]
+    [isaac.foundation.nexus :as nexus]
+    [isaac.agent.resource-pool :as pool]
     [isaac.worksite.lock :as lock]))
 
 (defn- isaac-root []

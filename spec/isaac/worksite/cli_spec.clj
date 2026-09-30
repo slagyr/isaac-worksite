@@ -1,11 +1,11 @@
 (ns isaac.worksite.cli-spec
   (:require
     [clojure.edn :as edn]
-    [isaac.cli.host :as host]
-    [isaac.cli.registry :as registry]
-    [isaac.config.api :as config-api]
-    [isaac.fs :as fs]
-    [isaac.nexus :as nexus]
+    [isaac.foundation.cli.host :as host]
+    [isaac.foundation.cli.registry :as registry]
+    [isaac.foundation.config.api :as config-api]
+    [isaac.foundation.fs :as fs]
+    [isaac.foundation.nexus :as nexus]
     [isaac.worksite.cli :as sut]
     [isaac.worksite.lock :as lock]
     [speclj.core :refer [around describe it should-contain should=]]))
