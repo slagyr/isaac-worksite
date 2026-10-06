@@ -140,3 +140,26 @@ Feature: Worksites — leases and locks
     And isaac is run with "prompt -m 'Once more' --session harbor --pool decks"
     Then the stdout contains "held"
     And the exit code is 0
+
+  @wip
+  Scenario: a lock write that fails partway leaves no lock; the turn takes the next member (isaac-x3g4)
+    Foreman pilot 1: on a real filesystem each failed acquisition left its
+    lock behind, so one turn locked every member and then waited on itself.
+    The suite's in-memory filesystem never reached that code, so this one
+    runs on a real directory.
+    Given the worksite locks live on the real filesystem
+    And writing the lock for "/ships/cordelia/chart-room" fails partway
+    And the following model responses are queued:
+      | type | content | model |
+      | text | Aye     | echo  |
+    When isaac is run with "prompt -m 'berth one' --session harbor --pool decks"
+    Then the exit code is 0
+    And session "harbor" has transcript matching:
+      | type    | message.role | message.content | cwd                    |
+      | message | user         | berth one       | /ships/cordelia/galley |
+      | message | assistant    | Aye             |                        |
+    When isaac is run with "worksites list"
+    Then the stdout matches:
+      | pattern                                    |
+      | decks\s+/ships/cordelia/chart-room\s+free  |
+      | decks\s+/ships/cordelia/galley\s+free      |
