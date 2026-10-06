@@ -1,12 +1,50 @@
 (ns isaac.worksite.lock-spec
   (:require
+    [clojure.java.io :as io]
     [isaac.foundation.cli.host :as host]
     [isaac.foundation.fs :as fs]
+    [isaac.foundation.logger :as log]
     [isaac.foundation.nexus :as nexus]
     [isaac.worksite.lock :as sut]
     [speclj.core :refer [describe it should should-be-nil should-not should-not= should=]]))
 
 (describe "worksite lock"
+
+  (it "removes its own real-filesystem lock and warns when acquisition fails after writing"
+    (let [dir (.toFile (java.nio.file.Files/createTempDirectory "worksite-lock-spec"
+                        (make-array java.nio.file.attribute.FileAttribute 0)))
+          root (.getPath dir)
+          spit* fs/spit]
+      (try
+        (nexus/-with-nexus {:fs (fs/real-fs) :root root}
+          (log/capture-logs
+            (let [result (with-redefs [fs/spit (fn [filesystem path value]
+                                                 (spit* filesystem path value)
+                                                 (throw (ex-info "disk interrupted" {})))]
+                           (sut/acquire-turn! root "chart-room" {:session-key "harbor"}))]
+            (should= :already-locked (:error result))
+            (should-be-nil (sut/read-lock root "chart-room"))
+            (should (some #(and (= :worksite/guard-failed (:event %))
+                                (= "disk interrupted" (:error %))) @log/captured-logs)))))
+        (clojure.java.io/delete-file (sut/lock-path root "chart-room") true)
+        (clojure.java.io/delete-file (str (sut/lock-path root "chart-room") ".guard") true)
+        (clojure.java.io/delete-file (str root "/worksites") true)
+        (clojure.java.io/delete-file dir true))))
+
+  (it "reports a successful real-filesystem lease as acquired"
+    (let [dir (.toFile (java.nio.file.Files/createTempDirectory "worksite-success-spec"
+                        (make-array java.nio.file.attribute.FileAttribute 0)))
+          root (.getPath dir)]
+      (try
+        (nexus/-with-nexus {:fs (fs/real-fs) :root root}
+          (log/capture-logs
+            (let [claim (sut/acquire-turn! root "chart-room" {:session-key "harbor"})]
+              (should (:ok claim))
+              (sut/release-turn! root "chart-room" (:token claim)))))
+        (io/delete-file (sut/lock-path root "chart-room") true)
+        (io/delete-file (str (sut/lock-path root "chart-room") ".guard") true)
+        (io/delete-file (str root "/worksites") true)
+        (io/delete-file dir true))))
 
   (it "starts free"
     (let [mem (fs/mem-fs)]
