@@ -31,6 +31,27 @@
         (clojure.java.io/delete-file (str root "/worksites") true)
         (clojure.java.io/delete-file dir true))))
 
+  (it "removes a partial real-filesystem lock after a failed write"
+    (let [dir (.toFile (java.nio.file.Files/createTempDirectory "worksite-partial-spec"
+                        (make-array java.nio.file.attribute.FileAttribute 0)))
+          root (.getPath dir)
+          spit* fs/spit]
+      (try
+        (nexus/-with-nexus {:fs (fs/real-fs) :root root}
+          (log/capture-logs
+            (let [result (with-redefs [fs/spit (fn [filesystem path _]
+                                                 (spit* filesystem path "{:kind :turn")
+                                                 (throw (ex-info "disk interrupted" {})))]
+                           (sut/acquire-turn! root "chart-room" {:session-key "harbor"}))]
+              (should= :already-locked (:error result))
+              (should-not (fs/exists? (fs/real-fs) (sut/lock-path root "chart-room")))
+              (should (some #(and (= :worksite/guard-failed (:event %))
+                                  (= "disk interrupted" (:error %))) @log/captured-logs)))))
+        (io/delete-file (sut/lock-path root "chart-room") true)
+        (io/delete-file (str (sut/lock-path root "chart-room") ".guard") true)
+        (io/delete-file (str root "/worksites") true)
+        (io/delete-file dir true))))
+
   (it "reports a successful real-filesystem lease as acquired"
     (let [dir (.toFile (java.nio.file.Files/createTempDirectory "worksite-success-spec"
                         (make-array java.nio.file.attribute.FileAttribute 0)))

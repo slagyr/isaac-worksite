@@ -98,11 +98,18 @@
   (or (get @guards* path)
       (get (swap! guards* #(if (contains? % path) % (assoc % path (java.util.concurrent.locks.ReentrantLock.)))) path)))
 
+(defn- lock-content [root name]
+  (let [fs* (filesystem)
+        path (lock-path root name)]
+    (when (fs/exists? fs* path)
+      (fs/slurp fs* path))))
+
 (defn- undo-written-lock! [root name before]
   (try
-    (let [after (read-lock root name)]
-      (when (and after (not= before after)
-                 (= (current-owner) (:owner after)))
+    ;; The guard excludes competing acquisitions. Compare raw bytes rather than
+    ;; parsed EDN: an interrupted write may leave an unparseable fragment.
+    (let [after (lock-content root name)]
+      (when (and after (not= before after))
         (delete-lock! root name)))
     (catch Exception cleanup
       (log/warn :worksite/cleanup-failed :worksite name :error (.getMessage cleanup)))))
@@ -120,7 +127,7 @@
                            (into-array OpenOption [StandardOpenOption/CREATE StandardOpenOption/WRITE]))]
               (try
                 (if-let [lock (try (.tryLock channel) (catch Exception _ nil))]
-                  (let [before (read-lock root name)
+                  (let [before (lock-content root name)
                         result (try (f)
                                     (catch Exception e
                                       (undo-written-lock! root name before)
