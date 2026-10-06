@@ -98,6 +98,15 @@
   (or (get @guards* path)
       (get (swap! guards* #(if (contains? % path) % (assoc % path (java.util.concurrent.locks.ReentrantLock.)))) path)))
 
+(defn- undo-written-lock! [root name before]
+  (try
+    (let [after (read-lock root name)]
+      (when (and after (not= before after)
+                 (= (current-owner) (:owner after)))
+        (delete-lock! root name)))
+    (catch Exception cleanup
+      (log/warn :worksite/cleanup-failed :worksite name :error (.getMessage cleanup)))))
+
 (defn- with-guard [root name busy f]
   (let [path (lock-path root name)
         mutex (guard path)]
@@ -111,9 +120,20 @@
                            (into-array OpenOption [StandardOpenOption/CREATE StandardOpenOption/WRITE]))]
               (try
                 (if-let [lock (try (.tryLock channel) (catch Exception _ nil))]
-                  (try (f) (finally (.release lock)))
+                  (let [before (read-lock root name)
+                        result (try (f)
+                                    (catch Exception e
+                                      (undo-written-lock! root name before)
+                                      (log/warn :worksite/guard-failed :worksite name :error (.getMessage e))
+                                      busy))]
+                    (try (.release lock)
+                         (catch Exception e
+                           (log/warn :worksite/guard-failed :worksite name :error (.getMessage e))))
+                    result)
                   busy)
-                (catch Exception _ busy))))
+                (catch Exception e
+                  (log/warn :worksite/guard-failed :worksite name :error (.getMessage e))
+                  busy))))
           (f))
         (finally (.unlock mutex))))))
 
