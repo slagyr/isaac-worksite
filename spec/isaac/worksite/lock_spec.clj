@@ -52,6 +52,47 @@
         (io/delete-file (str root "/worksites") true)
         (io/delete-file dir true))))
 
+  (it "preserves an existing corrupt lock if acquisition fails before writing"
+    (let [dir (.toFile (java.nio.file.Files/createTempDirectory "worksite-existing-spec"
+                        (make-array java.nio.file.attribute.FileAttribute 0)))
+          root (.getPath dir)
+          path (sut/lock-path root "chart-room")]
+      (try
+        (nexus/-with-nexus {:fs (fs/real-fs) :root root}
+          (fs/mkdirs (fs/real-fs) (sut/lock-dir root))
+          (fs/spit (fs/real-fs) path "{:kind :operator")
+          (log/capture-logs
+            (with-redefs [fs/spit (fn [& _] (throw (ex-info "disk interrupted" {})))]
+              (should= :already-locked (:error (sut/acquire-turn! root "chart-room" {:session-key "harbor"})))))
+          (should= "{:kind :operator" (fs/slurp (fs/real-fs) path)))
+        (io/delete-file path true)
+        (io/delete-file (str path ".guard") true)
+        (io/delete-file (str root "/worksites") true)
+        (io/delete-file dir true))))
+
+  (it "restores a pre-existing stale lease when its replacement write fails partway"
+    (let [dir (.toFile (java.nio.file.Files/createTempDirectory "worksite-replace-spec"
+                        (make-array java.nio.file.attribute.FileAttribute 0)))
+          root (.getPath dir)
+          path (sut/lock-path root "chart-room")
+          spit* fs/spit
+          stale (pr-str {:kind :turn :holder "old" :session "old" :pid -1 :token "old-token"})]
+      (try
+        (nexus/-with-nexus {:fs (fs/real-fs) :root root}
+          (fs/mkdirs (fs/real-fs) (sut/lock-dir root))
+          (fs/spit (fs/real-fs) path stale)
+          (log/capture-logs
+            (let [result (with-redefs [fs/spit (fn [filesystem file _]
+                                                 (spit* filesystem file "{:kind :turn")
+                                                 (throw (ex-info "disk interrupted" {})))]
+                           (sut/acquire-turn! root "chart-room" {:session-key "harbor"}))]
+              (should= :already-locked (:error result))))
+          (should= stale (fs/slurp (fs/real-fs) path)))
+        (io/delete-file path true)
+        (io/delete-file (str path ".guard") true)
+        (io/delete-file (str root "/worksites") true)
+        (io/delete-file dir true))))
+
   (it "reports a successful real-filesystem lease as acquired"
     (let [dir (.toFile (java.nio.file.Files/createTempDirectory "worksite-success-spec"
                         (make-array java.nio.file.attribute.FileAttribute 0)))

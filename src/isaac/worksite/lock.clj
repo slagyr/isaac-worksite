@@ -109,8 +109,12 @@
     ;; The guard excludes competing acquisitions. Compare raw bytes rather than
     ;; parsed EDN: an interrupted write may leave an unparseable fragment.
     (let [after (lock-content root name)]
-      (when (and after (not= before after))
-        (delete-lock! root name)))
+      (when (not= before after)
+        (if (nil? before)
+          (delete-lock! root name)
+          ;; A failed replacement may have truncated an older stale lease.
+          ;; Restore the original bytes without using the failing fs/spit seam.
+          (clojure.core/spit (lock-path root name) before))))
     (catch Exception cleanup
       (log/warn :worksite/cleanup-failed :worksite name :error (.getMessage cleanup)))))
 
