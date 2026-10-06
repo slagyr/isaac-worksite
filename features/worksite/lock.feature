@@ -141,7 +141,6 @@ Feature: Worksites — leases and locks
     Then the stdout contains "held"
     And the exit code is 0
 
-  @wip
   Scenario: a lock write that fails partway leaves no lock; the turn takes the next member (isaac-x3g4)
     Foreman pilot 1: on a real filesystem each failed acquisition left its
     lock behind, so one turn locked every member and then waited on itself.

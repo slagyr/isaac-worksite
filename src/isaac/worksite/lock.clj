@@ -98,6 +98,16 @@
   (or (get @guards* path)
       (get (swap! guards* #(if (contains? % path) % (assoc % path (java.util.concurrent.locks.ReentrantLock.)))) path)))
 
+(defn- undo-written-lock! [root name existed-before?]
+  (try
+    ;; The guard serializes writers. A failed spit can leave an unparseable
+    ;; prefix, so read-lock cannot identify the owner of the attempted write.
+    ;; Never remove a file that existed before entering the guarded operation.
+    (when-not existed-before?
+      (delete-lock! root name))
+    (catch Exception cleanup
+      (log/warn :worksite/cleanup-failed :worksite name :error (.getMessage cleanup)))))
+
 (defn- with-guard [root name busy f]
   (let [path (lock-path root name)
         mutex (guard path)]
@@ -111,9 +121,20 @@
                            (into-array OpenOption [StandardOpenOption/CREATE StandardOpenOption/WRITE]))]
               (try
                 (if-let [lock (try (.tryLock channel) (catch Exception _ nil))]
-                  (try (f) (finally (.release lock)))
+                  (let [existed-before? (fs/exists? (filesystem) path)
+                        result (try (f)
+                                    (catch Exception e
+                                      (undo-written-lock! root name existed-before?)
+                                      (log/warn :worksite/guard-failed :worksite name :error (.getMessage e))
+                                      busy))]
+                    (try (.release lock)
+                         (catch Exception e
+                           (log/warn :worksite/guard-failed :worksite name :error (.getMessage e))))
+                    result)
                   busy)
-                (catch Exception _ busy))))
+                (catch Exception e
+                  (log/warn :worksite/guard-failed :worksite name :error (.getMessage e))
+                  busy))))
           (f))
         (finally (.unlock mutex))))))
 
