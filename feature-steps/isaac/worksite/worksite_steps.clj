@@ -1,7 +1,8 @@
 (ns isaac.worksite.worksite-steps
   (:require
     [clojure.edn :as edn]
-    [gherclj.core :as g :refer [defgiven helper!]]
+    [clojure.string :as str]
+    [gherclj.core :as g :refer [defgiven defthen helper!]]
     [isaac.foundation.config.config-steps :as config-steps]
     [isaac.foundation.cli-steps :as cli-steps]
     [isaac.foundation.config.root :as root]
@@ -38,12 +39,12 @@
 
 
 (defn- feature-root []
-  (or (nexus/get :root) (root/default-root)))
+  (or (g/get :runtime-root-dir) (g/get :root) (nexus/get :root) (root/default-root)))
 
 (defn stale-turn-lock-holds [name pid-str]
   (let [root (feature-root)
-        fs*  (or (fs/instance) (fs/real-fs))
-        path (lock/lock-path root name)]
+        fs*  (or (g/get :mem-fs) (fs/instance) (fs/real-fs))
+        path (lock/lock-path root (str/replace name #"^\"|\"$" ""))]
     (fs/mkdirs fs* (lock/lock-dir root))
     (fs/spit fs* path (pr-str {:kind    :turn
                                :holder  "stale"
@@ -52,6 +53,14 @@
                                :token   "stale-token"
                                :at      (str (java.time.Instant/now))}))
     nil))
+
+(defn turn-lock-from-pid [name pid-str]
+  (let [root   (feature-root)
+        fs*    (or (g/get :mem-fs) (fs/instance) (fs/real-fs))
+        path   (lock/lock-path root (str/replace name #"^\"|\"$" ""))
+        record (when (fs/exists? fs* path) (edn/read-string (fs/slurp fs* path)))]
+    (g/should= :turn (:kind record))
+    (g/should= (parse-long pid-str) (:pid record))))
 
 (defn real-worksite-locks []
   ;; Copy the in-memory fixture to a disposable real root before running the
@@ -102,3 +111,6 @@
 
 (defgiven "a stale turn lock holds worksite {string} with pid {int}"
   isaac.worksite.worksite-steps/stale-turn-lock-holds)
+
+(defthen "worksite {string} has a turn lock from pid {int}"
+  isaac.worksite.worksite-steps/turn-lock-from-pid)

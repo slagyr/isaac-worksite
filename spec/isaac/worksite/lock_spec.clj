@@ -114,6 +114,21 @@
         (should-be-nil (sut/read-lock "/isaac-state" "chart-room"))
         (should= :free (sut/lock-state nil)))))
 
+  (it "reports a dead owner's lease as free while retaining the lock for the next acquire"
+    (let [mem (fs/mem-fs)
+          root "/isaac-state"
+          name "chart-room"]
+      (nexus/-with-nexus {:fs mem :root root}
+        (fs/mkdirs mem (sut/lock-dir root))
+        (fs/spit mem (sut/lock-path root name)
+                 (pr-str {:kind :turn :session "harbor" :pid -1 :token "old-token"}))
+        (let [record (sut/read-lock root name)]
+          (should= :free (sut/lock-state record))
+          (should= :turn (:kind record)))
+        (log/capture-logs
+          (should (:ok (sut/acquire-turn! root name {:session-key "jetty"}))))
+        (should= :turn (sut/lock-state (sut/read-lock root name))))))
+
   (it "takes and releases an operator lock"
     (let [mem (fs/mem-fs)]
       (nexus/-with-nexus {:fs mem :root "/isaac-state"}

@@ -163,7 +163,6 @@ Feature: Worksites — leases and locks
       | decks\s+/ships/cordelia/chart-room\s+free  |
       | decks\s+/ships/cordelia/galley\s+free      |
 
-  @wip
   Scenario: a lease whose process is dead lists as free (isaac-uaxj)
     A stale lease is a free member: the next acquire takes it over, so
     listing it as leased only misleads. Only the list changes; an operator

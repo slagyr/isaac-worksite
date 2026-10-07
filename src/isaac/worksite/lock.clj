@@ -89,6 +89,7 @@
   (cond
     (nil? record) :free
     (operator-lock? record) :operator
+    (stale-turn-lock? record) :free
     (turn-lock? record) :turn
     :else :locked))
 
