@@ -162,3 +162,28 @@ Feature: Worksites — leases and locks
       | pattern                                    |
       | decks\s+/ships/cordelia/chart-room\s+free  |
       | decks\s+/ships/cordelia/galley\s+free      |
+
+  @wip
+  Scenario: a lease whose process is dead lists as free (isaac-uaxj)
+    A stale lease is a free member: the next acquire takes it over, so
+    listing it as leased only misleads. Only the list changes; an operator
+    lock and a live lease still show.
+    Given a stale turn lock holds worksite "/ships/cordelia/chart-room" with pid 999999
+    And the following model responses are queued:
+      | type | content   | model | wait |
+      | text | Hold fast | echo  | true |
+    Then worksite "/ships/cordelia/chart-room" has a turn lock from pid 999999
+    When isaac is run with "worksites lock /ships/cordelia/galley"
+    And isaac is run with "worksites list"
+    Then the stdout matches:
+      | pattern                                                |
+      | decks\s+/ships/cordelia/chart-room\s+free              |
+      | decks\s+/ships/cordelia/galley\s+locked \(operator\)   |
+    And the stdout does not contain "stale"
+    When isaac is run with "worksites unlock /ships/cordelia/galley"
+    And the user sends "keep watch" on session "jetty" with resource pools "decks"
+    And isaac is run with "worksites list"
+    Then the stdout matches:
+      | pattern                                                |
+      | decks\s+/ships/cordelia/chart-room\s+leased \(jetty\)  |
+      | decks\s+/ships/cordelia/galley\s+free                  |
